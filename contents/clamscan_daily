@@ -1,0 +1,118 @@
+#!/bin/bash
+ 
+LOGFILE="/var/log/clamav/clamav-$(date +'%Y-%m-%d').log";
+HOST="$(hostname).XXXX.XX";
+EMAIL_FROM="clamav-daily@${HOST}";
+EMAIL_TO="XXXX@XXXX";
+TODAY=$(date +%u);
+TIMEDATE=$(date +%c);
+ 
+######################################
+#Additional Settings
+######################################
+TESTRUN=0; #1 = True /0 = False
+ACTION=1; #0 = Logging Only / 1 = Move / 2 = Deletion
+RETENTION_TIME=14; #2 Wochen
+QUARANTINE=("/var/log/clamav/quarantine");
+EXCLUDE_DIR=("/proc" "/sys" $QUARANTINE);
+DAILY_SCAN_DIRS=("/home" "/opt" "/var" "/tmp");
+WEEKLY_SCAN_DIRS=("/");
+ 
+# Check for mail installation
+type mail >/dev/null 2>&1 || { echo >&2 "I require mail but it's not installed. Aborting."; exit 1; };
+ 
+ 
+clam_scan (){
+   for i in "${EXCLUDE_DIR[@]}";
+      do
+          ex_command+="--exclude-dir=$i ";
+      done
+ 
+   for j in "${DAILY_SCAN_DIRS[@]}";
+      do
+          daily_command+="$j ";
+      done
+ 
+   for k in "${WEEKLY_SCAN_DIRS[@]}";
+      do
+          weekly_command+="$k ";
+      done
+ 
+   echo $TIMEDATE "#### Scanning Files ####" &>> "${LOGFILE}"
+   if [ "$TODAY" == "6" ];then
+      echo $TIMEDATE "Starting a full weekend scan." &>> "${LOGFILE}";
+      # be nice to others while scanning the entire root
+      nice -n5 clamscan -ri ${weekly_command} ${ex_command} &>"${LOGFILE}";
+   else
+      echo $TIMEDATE "Starting a daily scan." &>> "${LOGFILE}";
+      clamscan -ri ${daily_command} ${ex_command} &>> "${LOGFILE}";
+   fi
+ 
+   case ${ACTION} in
+      0)
+         echo $TIMEDATE "Logging only Mode no Files have been Deleted" &>> "${LOGFILE}"
+         ;;
+ 
+      1)
+         echo $TIMEDATE "Moving Mode no File Deletion" &>> "${LOGFILE}"
+         #MALEWARE=$(cat "${LOGFILE}"|grep -i FOUND|cut -d":" -f1);
+         MALEWARE=$(cat "${LOGFILE}"|grep -i FOUND|cut -d":" -f1);
+         if test -d ${QUARANTINE}; then
+            echo $TIMEDATE "Quarantine Dir ok" &>> "${LOGFILE}"
+         else
+            echo $TIMEDATE "Quarantine not ok creating Dir" &>> "${LOGFILE}"
+            mkdir ${QUARANTINE};
+         fi
+ 
+         for entry in $MALEWARE; do
+            UNIQUE_ID=$(uuidgen)
+ 
+            echo $TIMEDATE "$(chmod -v 600 $entry)" &>> "${LOGFILE}"
+            echo $TIMEDATE "$(chown -v root:root $entry)" &>> "${LOGFILE}"
+            echo $TIMEDATE "Move and $(mv -v $entry $QUARANTINE/$UNIQUE_ID)" &>> "${LOGFILE}"
+ 
+         done
+ 
+         echo $TIMEDATE "Checking in $QUARANTINE for Files older then $RETENTION_TIME Days" &>> "${LOGFILE}"
+         find "$QUARANTINE" -type f -mtime +$RETENTION_TIME | while IFS= read -r file; do
+            if [ -e "$file" ]; then
+               echo $TIMEDATE "$(rm -fv "$file")" >> "$LOGFILE"
+            else
+               echo "File $file does not exist anymore" >> "$LOGFILE"
+            fi
+         done
+         ;;
+ 
+      2)
+         echo $TIMEDATE "Deletion Mode - no rest for the wicked" &>> "${LOGFILE}"
+         MALEWARE=$(cat "${LOGFILE}"|grep -i FOUND|cut -d":" -f1);
+         for entry in $MALEWARE; do
+            echo $TIMEDATE "$(rm -fv "$entry")" >> "$LOGFILE"
+         done
+         ;;
+ 
+      *)
+         echo $TIMEDATE "Logging only Mode no Files have been Deleted" &>> "${LOGFILE}"
+         ;;
+   esac
+}
+ 
+ 
+sendmail (){
+   # get the value of "Infected lines"
+   MALEWARE=$(cat "${LOGFILE}"|grep -i "Infected files:*"|cut -d":" -f2 );
+   # if the value is not equal to zero, send an email with the log file attached
+   if [ "${MALEWARE}" -ne "0" ]; then
+      cat ${LOGFILE} | mailx -s "ClamAV: Malware Found" -r "${EMAIL_FROM}" "${EMAIL_TO}";
+   fi
+}
+ 
+ 
+if [ "${TESTRUN}" -ne "0" ]; then
+   echo "Simulating Test finding";
+   MALEWARE="/home/administrator/eicar.txt: Eicar-Signature";
+   echo ${MALEWARE} | mailx -s "ClamAV: Malware Found" -r "${EMAIL_FROM}" "${EMAIL_TO}";
+else
+   clam_scan;
+   sendmail;
+fi      

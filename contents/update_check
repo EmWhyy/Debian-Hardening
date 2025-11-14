@@ -1,0 +1,20 @@
+#!/bin/bash
+LOGFILE="/var/log/upgrade.log";
+LOGFILE_DET="/var/log/upgrade_details.log";
+TODAY=$(date +"%Y-%m-%d %T");
+HOST="$(hostname --long)";
+ 
+# check for updates and write to variable
+LogMSG="$(apt list --upgradeable 2>/dev/null)"
+# count the Number of Updateable Packages
+NumLines=$(($(echo "$LogMSG"| wc -l)-1))
+ 
+#Paste it to Log file
+if [ "$NumLines" -eq "0" ]; then
+        echo $TODAY $HOST $NumLines "There are no Updates available" >> $LOGFILE
+        exit 0;
+else
+        echo $TODAY $HOST $NumLines ${LogMSG:13} >> $LOGFILE_DET
+        echo $TODAY $HOST "This Host has:" $NumLines "Updates Available">> $LOGFILE
+        exit 0;
+fi

@@ -1,0 +1,56 @@
+table ip filter {
+        chain INPUT {
+                type filter hook input priority 0; policy drop;
+
+                #enable incoming-loopback interface
+                iifname "lo" accept
+
+                #established: successfull tcp handshake
+                #related: related new connection like ftp
+                ct state established,related accept
+
+                #accept icmp type echo-request and drop all other types
+                icmp type echo-request limit rate 1/second accept
+                ip protocol icmp drop
+
+                ########################################################
+                #   Bereich fuer die Freigabe von Ports und Adressen   #
+                ########################################################
+                # input releas flag
+
+                ########################################################
+
+                #drop incoming broadcasts
+                ip daddr XXXX drop
+                ip daddr 255.255.255.255 drop
+        }
+
+        chain FORWARD {
+                type filter hook forward priority 0; policy drop;
+        }
+
+        chain OUTPUT {
+                type filter hook output priority 0; policy drop;
+                #enable outgoing-loopback interface
+                oifname "lo" accept
+                #allow curent connections
+                ct state {established, related} accept
+
+                ########################################################
+                #   Bereich fuer die Freigabe von Ports und Adressen   #
+                ########################################################
+                # output releas flag
+
+                ########################################################
+
+                #drops all icmp packets that are not related to a connection
+                ip protocol icmp drop
+
+                # zum loggen alles drunter einkommentieren
+                #counter comment "total unfiltered input packets"
+                #log            # simple detail goes into the log
+                #log flags all  # extra details go into the log
+                #log flags all prefix "Blocked: " # parseable keyword
+                #log flags all counter  # redundant but example
+        }
+}

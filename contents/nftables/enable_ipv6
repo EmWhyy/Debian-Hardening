@@ -1,0 +1,27 @@
+
+table ip6 filter {
+        chain INPUT {
+                type filter hook input priority 0; policy drop;
+                iifname "lo" accept
+                iifname "eth0" ct state established,related accept
+                iifname "eth0" ct state invalid drop
+                iifname "eth0" icmpv6 type { destination-unreachable, packet-too-big, \
+                        time-exceeded, parameter-problem, echo-request, nd-router-solicit, \
+                        nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert, \
+                        nd-redirect, ind-neighbor-solicit, ind-neighbor-advert, 148, 149} accept
+                iifname "eth0" ip6 saddr ::::/64 icmpv6 type { mld-listener-query, \
+                        mld-listener-report, mld-listener-done, mld2-listener-report, 151, 152, 153 } accept
+                iifname "eth0" ip6 saddr ::::/64 ct state new udp dport 53 accept
+                iifname "eth0" ct state new tcp dport 53 accept
+                iifname "eth0" ct state new udp dport 53 accept
+                counter log prefix "IP6-INP-DRP: "
+        }
+ 
+        chain FORWARD {
+                type filter hook forward priority 0; policy drop;
+        }
+ 
+        chain OUTPUT {
+                type filter hook output priority 0; policy accept;
+        }
+}
